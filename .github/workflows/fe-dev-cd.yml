@@ -29,7 +29,7 @@ jobs:
           ls -la ./frontend-build/
           
           if [ ! -f "./frontend-build/server.js" ]; then
-            echo "❌ Error: server.js not found!"
+            echo " Error: server.js not found!"
             exit 1
           fi
           
@@ -58,7 +58,7 @@ jobs:
             DEPLOY_PATH="/opt/billage/frontend"
             APP_NAME="billage-frontend"
             
-            echo "🚀 [DEV] Deployment started: $(date)"
+            echo " [DEV] Deployment started: $(date)"
             
             # 압축 해제
             mkdir -p /home/ubuntu/deploy/frontend_temp
@@ -74,8 +74,10 @@ jobs:
             rm -rf /home/ubuntu/deploy/frontend_temp
             rm /home/ubuntu/deploy/build.tar.gz
             
-            # PM2 실행
+          
+            # 누락 의존성 설치 + PM2 실행
             cd $DEPLOY_PATH
+            npm install styled-jsx --save
             pm2 delete $APP_NAME 2>/dev/null || true
             PORT=3000 HOSTNAME=0.0.0.0 pm2 start server.js --name $APP_NAME
             pm2 save
@@ -112,5 +114,5 @@ jobs:
         run: |
           curl -H "Content-Type: application/json" \
                -X POST \
-               -d '{"content": "❌ **[DEV] Frontend 배포 실패** @here\nCommit: `${{ github.event.workflow_run.head_sha }}`"}' \
+               -d '{"content": " **[DEV] Frontend 배포 실패** @here\nCommit: `${{ github.event.workflow_run.head_sha }}`"}' \
                ${{ secrets.DISCORD_WEBHOOK }} || true
