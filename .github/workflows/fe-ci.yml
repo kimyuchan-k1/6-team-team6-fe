@@ -95,9 +95,13 @@ jobs:
           # ============================================
           DEPS_TO_COPY="styled-jsx sharp"
           for dep in $DEPS_TO_COPY; do
-            if [ -e "node_modules/$dep" ]; then
-              echo " Copying missing dependency: $dep"
-              cp -rL node_modules/$dep .next/standalone/node_modules/
+            ACTUAL_PATH=$(find node_modules/.pnpm -type d -name "$dep" | grep "node_modules/$dep$" | head -1)
+            if [ -n "$ACTUAL_PATH" ]; then
+              echo "📦 Copying: $ACTUAL_PATH"
+              mkdir -p .next/standalone/node_modules/$dep
+              cp -rL $ACTUAL_PATH/* .next/standalone/node_modules/$dep/
+            else
+              echo "⚠️ Not found: $dep"
             fi
           done
           
