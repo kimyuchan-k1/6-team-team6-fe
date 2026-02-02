@@ -79,6 +79,9 @@ jobs:
             cd $DEPLOY_PATH
             npm install styled-jsx --save
             pm2 delete $APP_NAME 2>/dev/null || true
+            NEXTAUTH_SECRET="${{ secrets.DEV_NEXTAUTH_SECRET }}" \
+            NEXTAUTH_URL="${{ secrets.DEV_NEXTAUTH_URL }}" \
+            AUTH_TRUST_HOST=true \
             PORT=3000 HOSTNAME=0.0.0.0 pm2 start server.js --name $APP_NAME
             pm2 save
             

@@ -70,6 +70,9 @@ jobs:
             rm /home/ubuntu/deploy/build.tar.gz
             
             # 기존 deploy.sh 실행 (무중단 배포)
+            export NEXTAUTH_SECRET="${{ secrets.PROD_NEXTAUTH_SECRET }}"
+            export NEXTAUTH_URL="${{ secrets.PROD_NEXTAUTH_URL }}"
+            export AUTH_TRUST_HOST=true
             bash /home/ubuntu/scripts/deploy.sh frontend
             
             echo " [PROD] Deployment completed: $(date)"
