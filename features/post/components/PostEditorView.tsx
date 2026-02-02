@@ -89,7 +89,6 @@ export function PostEditorView(props: PostEditorViewProps) {
 							</li>
 							{images.existing.length > 0 &&
 								images.existing.map((image) => {
-									console.log(image);
 									return (
 										<li key={image.id} className="flex items-center justify-between gap-2">
 											<div className="w-19 h-19 relative">
@@ -130,9 +129,11 @@ export function PostEditorView(props: PostEditorViewProps) {
 						</ul>
 					</div>
 					{errors.images && (
-						<Typography type="caption" className="text-destructive">
-							{errors.images}
-						</Typography>
+						<HorizontalPaddingBox>
+							<Typography type="caption" className="text-destructive">
+								{errors.images}
+							</Typography>
+						</HorizontalPaddingBox>
 					)}
 				</div>
 

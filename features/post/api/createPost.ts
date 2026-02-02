@@ -1,16 +1,57 @@
-"use server";
+"use client";
 
-import type { CreatePostPayload } from "@/features/post/components/PostEditor";
+import { z } from "zod";
 
-export async function submitPost(payload: CreatePostPayload) {
-	const { title, content, rentalFee, feeUnit, newImages } = payload;
+import type { FeeUnit } from "@/features/post/schemas";
 
-	// TODO: API 연동
-	console.log("create...", {
+import { apiClient } from "@/shared/lib/api/api-client";
+import { request } from "@/shared/lib/api/request";
+
+const CreatePostResponseSchema = z.object({
+	postId: z.number(),
+});
+
+type CreatePostResponse = z.infer<typeof CreatePostResponseSchema>;
+
+type CreatePostParams = {
+	groupId: string;
+	title: string;
+	content: string;
+	rentalFee: number;
+	feeUnit: FeeUnit;
+	newImages: File[];
+};
+
+class CreatePostError extends Error {
+	status: number;
+	code?: string;
+
+	constructor(status: number, code?: string) {
+		super(code ?? "UNKNOWN_ERROR");
+		this.name = "CreatePostError";
+		this.status = status;
+		this.code = code;
+	}
+}
+
+async function createPost(params: CreatePostParams): Promise<CreatePostResponse> {
+	const { groupId, title, content, rentalFee, feeUnit, newImages } = params;
+
+	const payload = {
 		title,
 		content,
 		rentalFee,
 		feeUnit,
-		newImagesCount: newImages.length,
-	});
+		// TODO: fix to real image urls
+		imageUrls: ["/dummy-post-image.png"],
+	};
+
+	return await request(
+		apiClient.post(`groups/${groupId}/posts`, { json: payload }),
+		CreatePostResponseSchema,
+		CreatePostError,
+	);
 }
+
+export type { CreatePostParams, CreatePostResponse };
+export { createPost, CreatePostError };
