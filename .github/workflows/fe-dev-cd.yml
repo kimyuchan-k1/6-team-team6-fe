@@ -1,121 +1,121 @@
-name: Frontend Dev CD
-#
+name: Frontend Dev CD v2 (ASG Instance Refresh)
+
+# CI 성공 후 develop 브랜치에서만 트리거
 on:
   workflow_run:
-    workflows: ["Frontend CI"]
+    workflows: ["Frontend CI v2 (Docker + ECR)"]
     types: [completed]
     branches: [develop]
 
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  ASG_NAME: billage-dev-v2-fe-asg
+
+# ============================================================
+# 배포 흐름:
+# 1. CI에서 ECR에 latest 이미지 Push 완료
+#    - NEXT_PUBLIC_*는 빌드 시점에 이미 JS 번들에 포함됨
+# 2. 이 워크플로우가 ASG Instance Refresh 트리거
+# 3. ASG가 새 EC2 부팅 → user_data 실행
+#    - ECR에서 billage-fe:latest Pull
+#    - SSM /billage/dev/fe/* 에서 서버사이드 환경변수 조회
+#      (NEXTAUTH_SECRET, NEXTAUTH_URL 등)
+#    - docker run -e 로 서버사이드 환경변수 주입
+# 4. ALB Health Check (/) 통과 → 기존 EC2 종료
+# ============================================================
+
 jobs:
   deploy:
+    name: Deploy to Dev (Instance Refresh)
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download CI Artifacts
-        uses: dawidd6/action-download-artifact@v6
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          workflow: fe-ci.yml
-          run_id: ${{ github.event.workflow_run.id }}
-          name: frontend-build
-          path: ./frontend-build
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Verify Artifact
+      - name: Discord - Deploy Started
         run: |
-          echo "=== Downloaded Standalone Build ==="
-          ls -la ./frontend-build/
-          
-          if [ ! -f "./frontend-build/server.js" ]; then
-            echo "Error: server.js not found!"
-            exit 1
-          fi
-          
-          du -sh ./frontend-build/
+          curl -H "Content-Type: application/json" -X POST \
+            -d '{"embeds": [{"title": "🚀 [DEV] Frontend 배포 시작", "color": 3447003, "fields": [{"name": "Commit", "value": "`${{ github.event.workflow_run.head_sha }}`", "inline": true}]}]}' \
+            ${{ secrets.DISCORD_WEBHOOK }} || true
 
-      - name: Setup SSH
+      # ASG Instance Refresh 트리거
+      # MinHealthyPercentage: 0 → Dev는 인스턴스 1대라서 기존 종료 후 새로 띄움 (다운타임 발생)
+      - name: Trigger ASG Instance Refresh
+        id: refresh
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.DEV_EC2_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ secrets.DEV_EC2_HOST }} >> ~/.ssh/known_hosts
+          REFRESH_ID=$(aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name ${{ env.ASG_NAME }} \
+            --strategy Rolling \
+            --preferences '{"MinHealthyPercentage": 0}' \
+            --query "InstanceRefreshId" \
+            --output text)
 
-      - name: Compress and Upload
+          echo "refresh_id=${REFRESH_ID}" >> $GITHUB_OUTPUT
+          echo "🔄 Instance Refresh Started: ${REFRESH_ID}"
+
+      # Instance Refresh 완료 대기
+      - name: Wait for Instance Refresh
+        timeout-minutes: 10
         run: |
-          tar -czf build.tar.gz -C ./frontend-build .
-          ls -lh build.tar.gz
-          
-          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no build.tar.gz \
-              ubuntu@${{ secrets.DEV_EC2_HOST }}:/home/ubuntu/deploy/
+          REFRESH_ID="${{ steps.refresh.outputs.refresh_id }}"
 
-      - name: Deploy
-        run: |
-          ssh -i ~/.ssh/deploy_key ubuntu@${{ secrets.DEV_EC2_HOST }} << DEPLOY_SCRIPT
-            set -e
-            
-            DEPLOY_PATH="/opt/billage/frontend"
-            APP_NAME="billage-frontend"
-            
-            echo " [DEV] Deployment started: \$(date)"
-            
-            # 압축 해제
-            mkdir -p /home/ubuntu/deploy/frontend_temp
-            tar -xzf /home/ubuntu/deploy/build.tar.gz -C /home/ubuntu/deploy/frontend_temp
-            
-            # 배포
-            sudo rm -rf \$DEPLOY_PATH
-            sudo mkdir -p \$DEPLOY_PATH
-            sudo cp -a /home/ubuntu/deploy/frontend_temp/. \$DEPLOY_PATH/
-            sudo chown -R ubuntu:ubuntu \$DEPLOY_PATH
-            
-            # 정리
-            rm -rf /home/ubuntu/deploy/frontend_temp
-            rm /home/ubuntu/deploy/build.tar.gz
-            
+          while true; do
+            STATUS=$(aws autoscaling describe-instance-refreshes \
+              --auto-scaling-group-name ${{ env.ASG_NAME }} \
+              --instance-refresh-ids ${REFRESH_ID} \
+              --query "InstanceRefreshes[0].Status" \
+              --output text)
 
-            # PM2 실행
-            cd \$DEPLOY_PATH
-            pnpm install --prod --ignore-scripts
-            pm2 delete \$APP_NAME 2>/dev/null || true
-            NEXTAUTH_SECRET="${{ secrets.DEV_NEXTAUTH_SECRET }}" \
-            NEXTAUTH_URL="${{ secrets.DEV_NEXTAUTH_URL }}" \
-            AUTH_TRUST_HOST=true \
-            PORT=3000 HOSTNAME=0.0.0.0 pm2 start server.js --name \$APP_NAME
-            pm2 save
-            
-            echo " [DEV] Deployment completed: \$(date)"
-          DEPLOY_SCRIPT
+            PROGRESS=$(aws autoscaling describe-instance-refreshes \
+              --auto-scaling-group-name ${{ env.ASG_NAME }} \
+              --instance-refresh-ids ${REFRESH_ID} \
+              --query "InstanceRefreshes[0].PercentageComplete" \
+              --output text)
 
-      - name: Health Check
-        run: |
-          sleep 5
-          ssh -i ~/.ssh/deploy_key ubuntu@${{ secrets.DEV_EC2_HOST }} << 'HEALTHCHECK'
-            for i in {1..10}; do
-              if curl -sf http://localhost:3000 > /dev/null 2>&1; then
-                echo " Health check passed"
+            echo "📊 Status: ${STATUS}, Progress: ${PROGRESS}%"
+
+            case $STATUS in
+              "Successful")
+                echo "✅ Instance Refresh completed successfully!"
                 exit 0
-              fi
-              echo " Waiting for app... ($i/10)"
-              sleep 2
-            done
-            echo " Health check failed"
-            exit 1
-          HEALTHCHECK
+                ;;
+              "Failed"|"Cancelled"|"RollbackSuccessful"|"RollbackFailed")
+                echo "❌ Instance Refresh failed with status: ${STATUS}"
+                exit 1
+                ;;
+              *)
+                sleep 30
+                ;;
+            esac
+          done
 
-      - name: Notify Success
+      - name: Discord - Deploy Success
         if: success()
         run: |
-          curl -H "Content-Type: application/json" \
-               -X POST \
-               -d '{"content": " **[DEV] Frontend 배포 완료**\nCommit: `${{ github.event.workflow_run.head_sha }}`"}' \
-               ${{ secrets.DISCORD_WEBHOOK }} || true
+          curl -H "Content-Type: application/json" -X POST \
+            -d '{"embeds": [{"title": "✅ [DEV] Frontend 배포 완료", "color": 65280, "fields": [{"name": "Commit", "value": "`${{ github.event.workflow_run.head_sha }}`", "inline": true}, {"name": "ASG", "value": "`${{ env.ASG_NAME }}`", "inline": true}]}]}' \
+            ${{ secrets.DISCORD_WEBHOOK }} || true
 
-      - name: Notify Failure
+      - name: Discord - Deploy Failure
         if: failure()
         run: |
-          curl -H "Content-Type: application/json" \
-               -X POST \
-               -d '{"content": " **[DEV] Frontend 배포 실패** @here\nCommit: `${{ github.event.workflow_run.head_sha }}`"}' \
-               ${{ secrets.DISCORD_WEBHOOK }} || true
+          curl -H "Content-Type: application/json" -X POST \
+            -d '{"content": "@here", "embeds": [{"title": "❌ [DEV] Frontend 배포 실패", "color": 16711680, "fields": [{"name": "Commit", "value": "`${{ github.event.workflow_run.head_sha }}`", "inline": true}, {"name": "Refresh ID", "value": "`${{ steps.refresh.outputs.refresh_id }}`", "inline": true}]}]}' \
+            ${{ secrets.DISCORD_WEBHOOK }} || true
+
+      - name: Cancel Instance Refresh on Failure
+        if: failure()
+        continue-on-error: true
+        run: |
+          aws autoscaling cancel-instance-refresh \
+            --auto-scaling-group-name ${{ env.ASG_NAME }} || true
+          echo "🔙 Instance Refresh cancelled"
