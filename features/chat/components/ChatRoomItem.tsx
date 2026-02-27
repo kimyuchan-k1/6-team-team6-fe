@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import type { RoomSummary } from "@/features/chat/lib/types";
@@ -40,10 +41,19 @@ export function ChatRoomItem(props: ChatRoomItemProps) {
 							</Typography>
 							{room.unreadCount > 0 ? (
 								<Badge variant="product" className="h-5 min-w-5 justify-center px-1">
-									{room.unreadCount}
+									{room.unreadCount > 99 ? "99+" : room.unreadCount}
 								</Badge>
 							) : null}
 						</div>
+					</div>
+					<div className="w-11 h-11 ">
+						<Image
+							alt={"chat room item image"}
+							className="rounded-md"
+							src={room.postFirstImageUrl}
+							width={100}
+							height={100}
+						/>
 					</div>
 				</div>
 			</div>

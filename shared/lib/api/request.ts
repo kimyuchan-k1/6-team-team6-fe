@@ -56,12 +56,12 @@ const safeJson = async (response: Response): Promise<unknown> => {
 	}
 };
 
-async function request<T>(
+async function requestJson<T>(
 	responsePromise: Promise<Response>,
 	schema: ZodType<T>,
 	error?: ApiError,
 ): Promise<T>;
-async function request<T = unknown>(
+async function requestJson<T = unknown>(
 	responsePromise: Promise<Response>,
 	schema?: ZodType<T>,
 	error?: ApiError,
@@ -87,6 +87,17 @@ async function request<T = unknown>(
 	return data as T;
 }
 
+async function requestRaw(responsePromise: Promise<Response>, error?: ApiError): Promise<Response> {
+	const response = await responsePromise;
+
+	if (response.ok) {
+		return response;
+	}
+
+	const data = await safeJson(response);
+	throw getApiError(response.status, parseErrorCode(data), error);
+}
+
 async function requestVoid(responsePromise: Promise<Response>, error?: ApiError): Promise<void> {
 	const response = await responsePromise;
 
@@ -98,4 +109,23 @@ async function requestVoid(responsePromise: Promise<Response>, error?: ApiError)
 	throw getApiError(response.status, parseErrorCode(data), error);
 }
 
-export { ApiRequestError, ApiSchemaError, request, requestVoid };
+async function requestText(responsePromise: Promise<Response>, error?: ApiError): Promise<string> {
+	const response = await responsePromise;
+
+	if (!response.ok) {
+		const data = await safeJson(response);
+		throw getApiError(response.status, parseErrorCode(data), error);
+	}
+
+	const text = await response.text();
+	return text.trim();
+}
+
+export {
+	ApiRequestError,
+	ApiSchemaError,
+	requestJson,
+	requestRaw,
+	requestText,
+	requestVoid,
+};

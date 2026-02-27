@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import Image from "next/image";
 
 import type { PostSummaryDto } from "@/features/post/schemas";
@@ -16,8 +18,15 @@ function PostItem(props: PostItemProps) {
 
 	return (
 		<div className="flex gap-x-4">
-			<div>
-				<Image src={firstImageUrl} alt={postTitle} width={100} height={100} />
+			<div className="">
+				<Image
+					src={firstImageUrl}
+					alt={postTitle}
+					width={100}
+					height={100}
+					sizes="100px"
+					className="object-cover aspect-square"
+				/>
 			</div>
 			<div className="flex flex-col min-w-0 flex-1">
 				<div>
@@ -36,4 +45,6 @@ function PostItem(props: PostItemProps) {
 	);
 }
 
-export default PostItem;
+const MemoizedPostItem = memo(PostItem);
+
+export default MemoizedPostItem;

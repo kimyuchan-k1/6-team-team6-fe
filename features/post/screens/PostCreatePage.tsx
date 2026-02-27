@@ -4,15 +4,22 @@ import { useCallback } from "react";
 
 import { notFound, useParams, useRouter } from "next/navigation";
 
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import {
+	createPost,
+	CreatePostError,
+	type CreatePostParams,
+	type CreatePostResponse,
+} from "@/features/post/api/createPost";
+import { postQueryKeys } from "@/features/post/api/postQueryKeys";
 import PostEditor from "@/features/post/components/PostEditor";
-import usePost from "@/features/post/hooks/usePost";
+import { PostStateMessage } from "@/features/post/components/PostStateMessage";
 import type { CreatePostPayload } from "@/features/post/hooks/usePostEditor";
+import { postRoutes } from "@/features/post/lib/postRoutes";
 
 import TitleBackHeader from "@/shared/components/layout/headers/TitleBackHeader";
-import { Spinner } from "@/shared/components/ui/spinner";
-import { Typography } from "@/shared/components/ui/typography";
 
 import { apiErrorCodes } from "@/shared/lib/api/api-error-codes";
 import { getApiErrorMessage } from "@/shared/lib/error-message-map";
@@ -20,18 +27,32 @@ import { getApiErrorMessage } from "@/shared/lib/error-message-map";
 export function PostCreatePage() {
 	const { groupId } = useParams<{ groupId: string }>();
 	const router = useRouter();
+	const queryClient = useQueryClient();
 	const normalizedGroupId = groupId ?? "";
-	const { createMutation } = usePost({ groupId: normalizedGroupId });
-	const { mutate: createPost, isPending } = createMutation;
+	const listQueryKey = postQueryKeys.list(normalizedGroupId);
+	const { mutate: createPostMutate, isPending } = useMutation<
+		CreatePostResponse,
+		CreatePostError,
+		Omit<CreatePostParams, "groupId">
+	>({
+		mutationFn: (payload) => {
+			if (!normalizedGroupId) {
+				throw new CreatePostError(400, apiErrorCodes.PARAMETER_INVALID);
+			}
+			return createPost({ groupId: normalizedGroupId, ...payload });
+		},
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: listQueryKey });
+		},
+	});
 
 	const handleSubmit = useCallback(
 		(payload: CreatePostPayload) => {
 			if (!normalizedGroupId) {
 				notFound();
-				return;
 			}
 
-			createPost(
+			createPostMutate(
 				{
 					title: payload.title,
 					content: payload.content,
@@ -42,7 +63,7 @@ export function PostCreatePage() {
 				{
 					onSuccess: (data) => {
 						toast.success("게시글이 등록되었습니다.");
-						router.replace(`/groups/${normalizedGroupId}/posts/${data.postId}`);
+						router.replace(postRoutes.postDetail(normalizedGroupId, data.postId));
 					},
 					onError: (createError) => {
 						const errorCode = createError?.code;
@@ -56,16 +77,11 @@ export function PostCreatePage() {
 				},
 			);
 		},
-		[createPost, normalizedGroupId, router],
+		[createPostMutate, normalizedGroupId, router],
 	);
 
 	if (!normalizedGroupId) {
-		return (
-			<div className="h-full flex items-center justify-center gap-2 py-10 text-muted-foreground">
-				<Spinner />
-				<Typography type="body-sm">그룹 정보를 불러오는 중</Typography>
-			</div>
-		);
+		return <PostStateMessage label="그룹 정보를 불러오는 중" showSpinner fullHeight />;
 	}
 
 	return (

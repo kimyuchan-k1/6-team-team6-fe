@@ -2,42 +2,37 @@
 
 import { z } from "zod";
 
-import { apiClient } from "@/shared/lib/api/api-client";
-import { request } from "@/shared/lib/api/request";
+import { PostApiError } from "@/features/post/api/postApiError";
+import { type RentalStatus,rentalStatusSchema } from "@/features/post/schemas";
 
-const rentalStatusSchema = z.enum(["AVAILABLE", "RENTED_OUT"]);
+import { apiClient } from "@/shared/lib/api/api-client";
+import { requestJson } from "@/shared/lib/api/request";
 
 const UpdatePostStatusResponseSchema = z.object({
 	postId: z.number(),
-	status: rentalStatusSchema,
+	rentalStatus: rentalStatusSchema,
 });
 
 type UpdatePostStatusParams = {
 	groupId: string;
 	postId: string;
-	status: z.infer<typeof rentalStatusSchema>;
+	rentalStatus: RentalStatus;
 };
 
 type UpdatePostStatusResponse = z.infer<typeof UpdatePostStatusResponseSchema>;
 
-class UpdatePostStatusError extends Error {
-	status: number;
-	code?: string;
-
+class UpdatePostStatusError extends PostApiError {
 	constructor(status: number, code?: string) {
-		super(code ?? "UNKNOWN_ERROR");
-		this.name = "UpdatePostStatusError";
-		this.status = status;
-		this.code = code;
+		super("UpdatePostStatusError", status, code);
 	}
 }
 
 async function updatePostStatus(params: UpdatePostStatusParams): Promise<UpdatePostStatusResponse> {
-	const { groupId, postId, status } = params;
+	const { groupId, postId, rentalStatus } = params;
 
-	return await request(
+	return await requestJson(
 		apiClient.patch(`groups/${groupId}/posts/${postId}`, {
-			json: { status },
+			json: { status: rentalStatus },
 		}),
 		UpdatePostStatusResponseSchema,
 		UpdatePostStatusError,
@@ -45,4 +40,4 @@ async function updatePostStatus(params: UpdatePostStatusParams): Promise<UpdateP
 }
 
 export type { UpdatePostStatusParams, UpdatePostStatusResponse };
-export { rentalStatusSchema, updatePostStatus, UpdatePostStatusError };
+export { updatePostStatus, UpdatePostStatusError };

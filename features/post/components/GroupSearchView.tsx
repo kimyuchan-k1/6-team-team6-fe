@@ -1,12 +1,13 @@
 "use client";
 
-import { type ChangeEvent, type FormEvent, type ReactNode, useCallback } from "react";
+import { type ChangeEvent, type FormEvent, memo, type ReactNode, useCallback } from "react";
 
 import Link from "next/link";
 
 import { GroupSearchHeader } from "@/features/post/components/GroupSearchHeader";
 import PostItem from "@/features/post/components/PostItem";
 import { PostItemSkeletonList } from "@/features/post/components/PostItemSkeletonList";
+import { postRoutes } from "@/features/post/lib/postRoutes";
 import type { PostSummaryDto } from "@/features/post/schemas";
 
 import HorizontalPaddingBox from "@/shared/components/layout/HorizontalPaddingBox";
@@ -146,11 +147,8 @@ function SearchResultsSection(props: SearchResultsSectionProps) {
 	const hasSearchResults = searchResults.length > 0;
 	const isLoadingInitial = isLoading && !hasSearchResults;
 	const handleIntersect = useCallback(() => {
-		if (!hasNextPage || isFetchingNextPage) {
-			return;
-		}
 		onLoadMore();
-	}, [hasNextPage, isFetchingNextPage, onLoadMore]);
+	}, [onLoadMore]);
 
 	const { setTarget } = useIntersectionObserver({
 		onIntersect: handleIntersect,
@@ -214,24 +212,25 @@ interface SearchResultsListProps {
 	searchResults: PostSummaryDto[];
 }
 
-function SearchResultsList(props: SearchResultsListProps) {
+const SearchResultsList = memo(function SearchResultsList(props: SearchResultsListProps) {
 	const { groupId, searchResults } = props;
+	const lastResultIndex = searchResults.length - 1;
 
 	return (
 		<ul className="flex flex-col gap-6">
 			{searchResults.map((post, index) => (
 				<li key={post.postId} className="flex flex-col gap-y-6">
 					<HorizontalPaddingBox>
-						<Link href={`/groups/${groupId}/posts/${post.postId}`}>
+						<Link href={postRoutes.postDetail(groupId, post.postId)}>
 							<PostItem {...post} />
 						</Link>
 					</HorizontalPaddingBox>
-					{index !== searchResults.length - 1 && <Separator />}
+					{index !== lastResultIndex ? <Separator /> : null}
 				</li>
 			))}
 		</ul>
 	);
-}
+});
 
 interface SectionTitleProps {
 	children: ReactNode;

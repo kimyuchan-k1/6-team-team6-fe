@@ -2,17 +2,11 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { useSearchParams } from "next/navigation";
 
-import { useChatListSSE } from "@/features/chat/hooks/useChatListSSE";
 import { useChatRooms } from "@/features/chat/hooks/useChatRooms";
-import type { ChatRoomSource } from "@/features/chat/lib/types";
 
-type UseChatListParams = {
-	sourceRooms: ChatRoomSource[];
-	pageSize?: number;
-};
-
-export function useChatList({ sourceRooms, pageSize }: UseChatListParams) {
+export function useChatList() {
 	const searchParams = useSearchParams();
+	const typeParam = searchParams.get("type");
 	const postId = useMemo(() => {
 		const postIdParam = searchParams.get("postId");
 		if (!postIdParam) {
@@ -22,14 +16,15 @@ export function useChatList({ sourceRooms, pageSize }: UseChatListParams) {
 		return Number.isNaN(parsed) ? null : parsed;
 	}, [searchParams]);
 
+	const isItemList = typeParam === "item" && postId !== null;
+	const listType = isItemList ? "item" : "all";
+
 	const { rooms, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError } =
-		useChatRooms({ postId, sourceRooms, pageSize });
+		useChatRooms({ postId: isItemList ? postId : null, listType });
 
 	const fetchNextPageRef = useRef(fetchNextPage);
 	const hasNextPageRef = useRef(hasNextPage);
 	const observerRef = useRef<IntersectionObserver | null>(null);
-
-	useChatListSSE();
 
 	useEffect(() => {
 		fetchNextPageRef.current = fetchNextPage;
