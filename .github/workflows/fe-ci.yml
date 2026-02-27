@@ -126,7 +126,7 @@ jobs:
             NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${{ github.ref == 'refs/heads/main' && secrets.PROD_NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || secrets.DEV_NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID }}
             NEXT_PUBLIC_FIREBASE_VAPID_KEY=${{ github.ref == 'refs/heads/main' && secrets.PROD_NEXT_PUBLIC_FIREBASE_VAPID_KEY || secrets.DEV_NEXT_PUBLIC_FIREBASE_VAPID_KEY }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
           provenance: false
 
       - name: Output Image Info
